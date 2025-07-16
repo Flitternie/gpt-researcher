@@ -65,9 +65,12 @@ def get_retriever(retriever: str):
             from gpt_researcher.retrievers import MCPRetriever
 
             return MCPRetriever
+        case "brave":
+            from gpt_researcher.retrievers import BraveSearch
 
+            return BraveSearch
         case _:
-            return None
+            raise ValueError(f"Unknown retriever: {retriever}. Please check the retriever name or add it to the retrievers module.")
 
 
 def get_retrievers(headers: dict[str, str], cfg):

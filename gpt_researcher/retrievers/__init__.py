@@ -1,5 +1,6 @@
 from .arxiv.arxiv import ArxivSearch
 from .bing.bing import BingSearch
+from .brave.brave import BraveSearch
 from .custom.custom import CustomRetriever
 from .duckduckgo.duckduckgo import Duckduckgo
 from .google.google import GoogleSearch
@@ -15,6 +16,7 @@ from .mcp import MCPRetriever
 
 __all__ = [
     "TavilySearch",
+    "BraveSearch",
     "CustomRetriever",
     "Duckduckgo",
     "SearchApiSearch",
