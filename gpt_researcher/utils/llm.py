@@ -66,7 +66,9 @@ async def create_chat_completion(
         provider_kwargs['reasoning_effort'] = reasoning_effort
 
     if model not in NO_SUPPORT_TEMPERATURE_MODELS:
-        provider_kwargs['temperature'] = temperature
+        # NOTE: set temperature to 0.0 for reproducibility
+        # provider_kwargs['temperature'] = temperature
+        provider_kwargs['temperature'] = 0.0
         provider_kwargs['max_tokens'] = max_tokens
     else:
         provider_kwargs['temperature'] = None
@@ -76,6 +78,29 @@ async def create_chat_completion(
         base_url = os.environ.get("OPENAI_BASE_URL", None)
         if base_url:
             provider_kwargs['openai_api_base'] = base_url
+
+    elif llm_provider == "azure_openai":
+        # Load Azure OpenAI configuration from environment or config file
+        import json
+        try:
+            with open('config_exp.json', 'r') as f:
+                config = json.load(f)
+                azure_config = config.get('AZURE_OPENAI_CONFIG', {})
+        except (FileNotFoundError, json.JSONDecodeError):
+            azure_config = {}
+
+        # Find the appropriate configuration for the model
+        config_found = False
+        for config_group in azure_config.values():
+            if model in config_group.get('models', []):
+                provider_kwargs['azure_endpoint'] = config_group['endpoint']
+                provider_kwargs['api_version'] = config_group['api_version']
+                provider_kwargs['api_key'] = config_group['api_key']
+                config_found = True
+                break
+
+        if not config_found:
+            raise ValueError(f"Unsupported Azure OpenAI model: {model}. Please check your config_local.json")
 
     provider = get_llm(llm_provider, **provider_kwargs)
     response = ""

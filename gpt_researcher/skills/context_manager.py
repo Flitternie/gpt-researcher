@@ -26,9 +26,14 @@ class ContextManager:
             prompt_family=self.researcher.prompt_family,
             **self.researcher.kwargs
         )
+
+        # NOTE: `max_results` is set to `self.researcher.context_size` to limit the number of results
+        try:
+            max_results = self.researcher.context_size
+        except:
+            max_results = 10
         return await context_compressor.async_get_context(
-            # NOTE: `max_results` is set to `self.researcher.context_size` to limit the number of results
-            query=query, max_results=self.researcher.context_size, cost_callback=self.researcher.add_costs
+            query=query, max_results=max_results, cost_callback=self.researcher.add_costs
         )
 
     async def get_similar_content_by_query_with_vectorstore(self, query, filter):

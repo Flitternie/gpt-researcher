@@ -69,6 +69,10 @@ def get_retriever(retriever: str):
             from gpt_researcher.retrievers import BraveSearch
 
             return BraveSearch
+        case "fineweb":
+            from gpt_researcher.retrievers import FineWebSearch
+
+            return FineWebSearch
         case _:
             raise ValueError(f"Unknown retriever: {retriever}. Please check the retriever name or add it to the retrievers module.")
 
