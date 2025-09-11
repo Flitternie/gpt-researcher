@@ -27,11 +27,8 @@ class ContextManager:
             **self.researcher.kwargs
         )
 
-        # NOTE: `max_results` is set to `self.researcher.context_size` to limit the number of results
-        try:
-            max_results = self.researcher.context_size
-        except:
-            max_results = 10
+        # NOTE: `max_results` is set to `self.researcher.context_buffer_size` to limit the number of results
+        max_results = getattr(self.researcher, 'context_buffer_size', 10)
         return await context_compressor.async_get_context(
             query=query, max_results=max_results, cost_callback=self.researcher.add_costs
         )

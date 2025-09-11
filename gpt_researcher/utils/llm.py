@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+import tiktoken
+import asyncio
 
 from langchain.output_parsers import PydanticOutputParser
 from langchain.prompts import PromptTemplate
@@ -10,8 +12,9 @@ from langchain.prompts import PromptTemplate
 from gpt_researcher.llm_provider.generic.base import NO_SUPPORT_TEMPERATURE_MODELS, SUPPORT_REASONING_EFFORT_MODELS, ReasoningEfforts
 
 from ..prompts import PromptFamily
-from .costs import estimate_llm_cost
+from .costs import estimate_llm_cost, precise_llm_cost
 from .validators import Subtopics
+from .token_tracker import TokenTracker
 import os
 
 
@@ -31,6 +34,7 @@ async def create_chat_completion(
         llm_kwargs: dict[str, Any] | None = None,
         cost_callback: callable = None,
         reasoning_effort: str | None = ReasoningEfforts.Medium.value,
+        timeout: float | None = 60,
         **kwargs
 ) -> str:
     """Create a chat completion using the OpenAI API
@@ -45,6 +49,7 @@ async def create_chat_completion(
         llm_kwargs (dict[str, Any], optional): Additional LLM keyword arguments. Defaults to None.
         cost_callback: Callback function for updating cost.
         reasoning_effort (str, optional): Reasoning effort for OpenAI's reasoning models. Defaults to 'low'.
+        timeout (float, optional): Timeout in seconds for the LLM call. Defaults to None (no timeout).
         **kwargs: Additional keyword arguments.
     Returns:
         str: The response from the chat completion.
@@ -83,7 +88,7 @@ async def create_chat_completion(
         # Load Azure OpenAI configuration from environment or config file
         import json
         try:
-            with open('config_exp.json', 'r') as f:
+            with open('./config/azure.key', 'r') as f:
                 config = json.load(f)
                 azure_config = config.get('AZURE_OPENAI_CONFIG', {})
         except (FileNotFoundError, json.JSONDecodeError):
@@ -104,17 +109,68 @@ async def create_chat_completion(
 
     provider = get_llm(llm_provider, **provider_kwargs)
     response = ""
+    
     # create response
-    for _ in range(10):  # maximum of 10 attempts
-        response = await provider.get_chat_response(
-            messages, stream, websocket, **kwargs
-        )
+    for attempt in range(10):  # maximum of 10 attempts
+        try:
+            # Apply timeout to the LLM call
+            response = await asyncio.wait_for(
+                provider.get_chat_response(messages, stream, websocket, **kwargs),
+                timeout=timeout
+            )
+            # If we got a response, break out of retry loop
+            if response:
+                break
+        except asyncio.TimeoutError:
+            logging.error(f"LLM call timed out after {timeout}s (attempt {attempt + 1}) for model {model}")
+            continue
+        except Exception as e:
+            logging.error(f"Error in LLM call (attempt {attempt + 1}): {e}")
+            raise e
 
-        if cost_callback:
-            llm_costs = estimate_llm_cost(str(messages), response)
-            cost_callback(llm_costs)
+    # Capture the current loop to safely route callbacks from worker threads
+    try:
+        calling_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        calling_loop = None
 
-        return response
+    async def _background_token_accounting(_messages, _response, _model, _cost_callback):
+        def _compute():
+            try:
+                try:
+                    _encoding = tiktoken.encoding_for_model(_model)
+                except Exception:
+                    _encoding = tiktoken.get_encoding("o200k_base")
+
+                _input_text = str(_messages)
+                _output_text = str(_response)
+                _input_tokens = len(_encoding.encode(_input_text))
+                _output_tokens = len(_encoding.encode(_output_text))
+
+                # _llm_costs = estimate_llm_cost(str(_messages), _response)
+                _llm_costs = precise_llm_cost(_model, _input_tokens, _output_tokens)
+
+                TokenTracker.track_tokens(_model, _input_tokens, _output_tokens, _llm_costs)
+
+                if _cost_callback:
+                    # Run the callback on the original loop thread if possible
+                    if calling_loop and calling_loop.is_running():
+                        try:
+                            calling_loop.call_soon_threadsafe(_cost_callback, _llm_costs)
+                        except Exception:
+                            _cost_callback(_llm_costs)
+                    else:
+                        _cost_callback(_llm_costs)
+            except Exception as e:
+                logging.getLogger(__name__).error(f"Background token accounting failed: {e}")
+
+        # Offload CPU-bound tokenization to a thread to avoid blocking the event loop
+        await asyncio.to_thread(_compute)
+
+    # Schedule token accounting without awaiting it to avoid latency
+    asyncio.create_task(_background_token_accounting(messages, response, model, cost_callback))
+
+    return response
 
     logging.error(f"Failed to get response from {llm_provider} API")
     raise RuntimeError(f"Failed to get response from {llm_provider} API")
