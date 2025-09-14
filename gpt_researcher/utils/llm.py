@@ -34,7 +34,7 @@ async def create_chat_completion(
         llm_kwargs: dict[str, Any] | None = None,
         cost_callback: callable = None,
         reasoning_effort: str | None = ReasoningEfforts.Medium.value,
-        timeout: float | None = 60,
+        timeout: float | None = None,
         **kwargs
 ) -> str:
     """Create a chat completion using the OpenAI API
