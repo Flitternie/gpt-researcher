@@ -27,7 +27,7 @@ async def create_chat_completion(
         messages: list[dict[str, str]],
         model: str | None = None,
         temperature: float | None = 0.4,
-        max_tokens: int | None = 4000,
+        max_tokens: int | None = None,
         llm_provider: str | None = None,
         stream: bool = False,
         websocket: Any | None = None,
@@ -35,6 +35,7 @@ async def create_chat_completion(
         cost_callback: callable = None,
         reasoning_effort: str | None = ReasoningEfforts.Medium.value,
         timeout: float | None = None,
+        usage_tag: str | None = None,
         **kwargs
 ) -> str:
     """Create a chat completion using the OpenAI API
@@ -42,7 +43,7 @@ async def create_chat_completion(
         messages (list[dict[str, str]]): The messages to send to the chat completion.
         model (str, optional): The model to use. Defaults to None.
         temperature (float, optional): The temperature to use. Defaults to 0.4.
-        max_tokens (int, optional): The max tokens to use. Defaults to 4000.
+        max_tokens (int, optional): The max tokens to use. Defaults to None.
         llm_provider (str, optional): The LLM Provider to use.
         stream (bool): Whether to stream the response. Defaults to False.
         webocket (WebSocket): The websocket used in the currect request,
@@ -50,6 +51,7 @@ async def create_chat_completion(
         cost_callback: Callback function for updating cost.
         reasoning_effort (str, optional): Reasoning effort for OpenAI's reasoning models. Defaults to 'low'.
         timeout (float, optional): Timeout in seconds for the LLM call. Defaults to None (no timeout).
+        usage_tag (str, optional): Optional tag for usage source (e.g., 'research', 'monitor').
         **kwargs: Additional keyword arguments.
     Returns:
         str: The response from the chat completion.
@@ -57,9 +59,6 @@ async def create_chat_completion(
     # validate input
     if model is None:
         raise ValueError("Model cannot be None")
-    if max_tokens is not None and max_tokens > 32001:
-        raise ValueError(
-            f"Max tokens cannot be more than 16,000, but got {max_tokens}")
 
     # Get the provider from supported providers
     provider_kwargs = {'model': model}
@@ -134,7 +133,7 @@ async def create_chat_completion(
     except RuntimeError:
         calling_loop = None
 
-    async def _background_token_accounting(_messages, _response, _model, _cost_callback):
+    async def _background_token_accounting(_messages, _response, _model, _cost_callback, _usage_tag):
         def _compute():
             try:
                 try:
@@ -150,7 +149,7 @@ async def create_chat_completion(
                 # _llm_costs = estimate_llm_cost(str(_messages), _response)
                 _llm_costs = precise_llm_cost(_model, _input_tokens, _output_tokens)
 
-                TokenTracker.track_tokens(_model, _input_tokens, _output_tokens, _llm_costs)
+                TokenTracker.track_tokens(_model, _input_tokens, _output_tokens, _llm_costs, usage_tag=_usage_tag)
 
                 if _cost_callback:
                     # Run the callback on the original loop thread if possible
@@ -168,7 +167,7 @@ async def create_chat_completion(
         await asyncio.to_thread(_compute)
 
     # Schedule token accounting without awaiting it to avoid latency
-    asyncio.create_task(_background_token_accounting(messages, response, model, cost_callback))
+    asyncio.create_task(_background_token_accounting(messages, response, model, cost_callback, usage_tag))
 
     return response
 

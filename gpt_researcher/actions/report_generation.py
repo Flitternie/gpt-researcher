@@ -264,7 +264,6 @@ async def generate_report(
             llm_provider=cfg.smart_llm_provider,
             stream=True,
             websocket=websocket,
-            max_tokens=cfg.smart_token_limit,
             llm_kwargs=cfg.llm_kwargs,
             cost_callback=cost_callback,
             **kwargs
@@ -280,7 +279,6 @@ async def generate_report(
                 llm_provider=cfg.smart_llm_provider,
                 stream=True,
                 websocket=websocket,
-                max_tokens=cfg.smart_token_limit,
                 llm_kwargs=cfg.llm_kwargs,
                 cost_callback=cost_callback,
                 **kwargs
