@@ -10,9 +10,10 @@ class FineWebSearch:
     FineWeb Search API Wrapper
     """
 
-    def __init__(self, query: str, query_domains=None):
+    def __init__(self, query: str, query_domains=None, root_query: str = ""):
         self.endpoint = "https://clueweb22.us/fineweb/search"
         self.query = query
+        self.root_query = root_query
 
     def search(self, max_results: int = 5) -> Optional[List[Dict[str, Any]]]:
         """
@@ -35,7 +36,7 @@ class FineWebSearch:
             headers = {
                 "X-API-Key": os.getenv("FINEWEB_API_KEY", "")
             }
-            response = requests.get(self.endpoint, headers=headers, params={'query': self.query, 'k': max_results})
+            response = requests.get(self.endpoint, headers=headers, params={'query': self.query, 'k': max_results, 'original_query': self.root_query})
             response.raise_for_status()
             json_data = response.json()
 
