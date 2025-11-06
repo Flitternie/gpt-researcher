@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, List, Optional
 import requests
 import base64
@@ -31,7 +32,10 @@ class FineWebSearch:
             ]
         """
         try:
-            response = requests.get(self.endpoint, params={'query': self.query, 'k': max_results})
+            headers = {
+                "X-API-Key": os.getenv("FINEWEB_API_KEY", "")
+            }
+            response = requests.get(self.endpoint, headers=headers, params={'query': self.query, 'k': max_results})
             response.raise_for_status()
             json_data = response.json()
 
