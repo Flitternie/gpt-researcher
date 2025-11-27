@@ -245,8 +245,11 @@ class GenericLLMProvider:
             # Getting output from the model chain using ainvoke for asynchronous invoking
             output = await self.llm.ainvoke(messages, **kwargs)
 
-            res = output.content
-
+            try:
+                res = output.additional_kwargs['tool_calls'][0]['function']['arguments']
+            except:
+                res = output.content
+            
         else:
             res = await self.stream_response(messages, websocket, **kwargs)
 

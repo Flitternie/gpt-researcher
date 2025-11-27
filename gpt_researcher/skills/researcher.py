@@ -2,11 +2,13 @@ import asyncio
 import random
 import logging
 import os
+import time
 from ..actions.utils import stream_output
 from ..actions.query_processing import plan_research_outline, get_search_results
 from ..document import DocumentLoader, OnlineDocumentLoader, LangChainDocumentLoader
 from ..utils.enum import ReportSource, ReportType
 from ..utils.logging_config import get_json_handler
+from ..utils.latency_tracker import LatencyTracker
 from ..actions.agent_creator import choose_agent
 
 
@@ -742,9 +744,13 @@ class ResearchConductor:
                 retriever = retriever_class(query, query_domains=query_domains)
 
                 # Perform the search using the current retriever
+                # Track search API latency
+                start_time = time.time()
                 search_results = await asyncio.to_thread(
                     retriever.search, max_results=self.researcher.cfg.max_search_results_per_query
                 )
+                latency = time.time() - start_time
+                LatencyTracker.track_latency("search", latency, source=retriever_class.__name__)
 
                 # Collect new URLs from search results
                 search_urls = [url.get("href") for url in search_results if url.get("href")]

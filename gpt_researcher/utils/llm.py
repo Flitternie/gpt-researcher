@@ -15,7 +15,9 @@ from ..prompts import PromptFamily
 from .costs import estimate_llm_cost, precise_llm_cost
 from .validators import Subtopics
 from .token_tracker import TokenTracker
+from .latency_tracker import LatencyTracker
 import os
+import time
 
 
 def get_llm(llm_provider, **kwargs):
@@ -87,7 +89,7 @@ async def create_chat_completion(
         # Load Azure OpenAI configuration from environment or config file
         import json
         try:
-            with open('./config/azure.key', 'r') as f:
+            with open('./keys/azure.key', 'r') as f:
                 config = json.load(f)
                 azure_config = config.get('AZURE_OPENAI_CONFIG', {})
         except (FileNotFoundError, json.JSONDecodeError):
@@ -108,6 +110,21 @@ async def create_chat_completion(
 
     provider = get_llm(llm_provider, **provider_kwargs)
     response = ""
+
+    # Handle response_format conversion to tools
+    if 'response_format' in kwargs:
+        response_format = kwargs.pop('response_format')
+        kwargs['tools'] = [{
+            "type": "function",
+            "function": {
+                "name": "structured_output",
+                "parameters": response_format.model_json_schema()
+            }
+        }]
+        kwargs['tool_choice'] = {"type": "function", "function": {"name": "structured_output"}}
+    
+    # Track LLM call latency
+    start_time = time.time()
     
     # create response
     for attempt in range(10):  # maximum of 10 attempts
@@ -126,6 +143,10 @@ async def create_chat_completion(
         except Exception as e:
             logging.error(f"Error in LLM call (attempt {attempt + 1}): {e}")
             raise e
+    
+    # Record latency
+    latency = time.time() - start_time
+    LatencyTracker.track_latency("llm", latency, source=model)
 
     # Capture the current loop to safely route callbacks from worker threads
     try:
@@ -170,9 +191,6 @@ async def create_chat_completion(
     asyncio.create_task(_background_token_accounting(messages, response, model, cost_callback, usage_tag))
 
     return response
-
-    logging.error(f"Failed to get response from {llm_provider} API")
-    raise RuntimeError(f"Failed to get response from {llm_provider} API")
 
 
 async def construct_subtopics(
